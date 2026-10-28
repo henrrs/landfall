@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "landfall"
+version = "0.1.0"
+description = "Contract driven source to landing capture engine"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6,<7", "pyarrow>=17,<26", "mssql-python>=1.0"]
+
+[project.optional-dependencies]
+azure = ["azure-storage-file-datalake>=12.17", "azure-keyvault-secrets>=4.9", "azure-identity>=1.18"]
+test = ["pytest>=8", "hypothesis>=6", "ruff>=0.9", "build>=1.2"]
+
+[project.scripts]
+landfall = "landfall.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["lab: requires Docker lab", "azure: requires real Azure resources"]

@@ -1,0 +1,40 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: finance
+  sourceSystem: corporate_sharepoint
+  owner: finance-data
+  costAllocation: finance
+  tags:
+    criticality: medium
+
+source:
+  connector: sharepoint
+  connectionRef: corporate-sharepoint
+  resource:
+    site: finance
+    list: Customers
+
+fields:
+  - name: id
+    type: int64
+  - name: title
+    type: string
+  - name: modified_at
+    type: timestamp
+
+read:
+  mode: incremental
+  initialPosition: beginning
+  position:
+    strategy: ordered_fields
+    fields:
+      - modified_at
+      - id
+
+target:
+  asset: customer
+  write:
+    mode: append

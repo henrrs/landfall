@@ -1,0 +1,43 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: customer
+  sourceSystem: external_crm
+  owner: customer-data
+  costAllocation: customer
+  tags:
+    criticality: medium
+
+source:
+  connector: http-api
+  connectionRef: external-crm-api
+  resource:
+    method: GET
+    path: /customers
+    recordPath: data.items
+
+fields:
+  - name: id
+    type: int64
+  - name: name
+    type: string
+  - name: email
+    type: string
+  - name: updated_at
+    type: timestamp
+
+read:
+  mode: incremental
+  initialPosition: beginning
+  position:
+    strategy: ordered_fields
+    fields:
+      - updated_at
+      - id
+
+target:
+  asset: customer
+  write:
+    mode: append

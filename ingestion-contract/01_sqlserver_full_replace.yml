@@ -1,0 +1,44 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: finance
+  sourceSystem: billing
+  owner: finance-data
+  costAllocation: finance
+  tags:
+    criticality: high
+
+source:
+  connector: sqlserver
+  connectionRef: billing-prod
+  resource:
+    database: Billing
+    schema: dbo
+    table: Invoice
+
+fields:
+  - name: invoice_id
+    type: int64
+  - name: customer_id
+    type: int64
+  - name: amount
+    type: decimal(18,2)
+  - name: issue_date
+    type: date
+
+read:
+  mode: full
+
+target:
+  asset: invoice
+  write:
+    mode: replace
+
+serviceLevel:
+  targetDuration: PT30M
+
+execution:
+  constraints:
+    maxSourceConnections: 8

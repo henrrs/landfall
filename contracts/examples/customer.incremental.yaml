@@ -1,0 +1,43 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+metadata:
+  version: 1.0.0
+  domain: customer
+  sourceSystem: crm
+  owner: customer-data
+source:
+  connector: sqlserver
+  connectionRef: crm-local
+  resource:
+    database: CRM
+    schema: dbo
+    table: Customer
+fields:
+  - name: customer_id
+    type: int64
+  - name: name
+    type: string
+  - name: status
+    type: string
+  - name: updated_at
+    type: timestamp
+read:
+  mode: incremental
+  initialPosition: beginning
+  position:
+    strategy: ordered_fields
+    fields: [updated_at, customer_id]
+  filters:
+    and:
+      - field: status
+        operator: eq
+        value: ACTIVE
+target:
+  asset: customer
+  write:
+    mode: append
+serviceLevel:
+  targetDuration: PT30M
+execution:
+  constraints:
+    maxSourceConnections: 2

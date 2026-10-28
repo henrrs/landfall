@@ -1,0 +1,25 @@
+storageTopology:
+  domains:
+    customer:
+      storageAccount: devstoreaccount1
+      containers:
+        landing: landing-zone
+        bronze: bronze
+        silver: silver
+        gold: gold
+registries:
+  sourceSystems: [crm]
+storage:
+  type: local
+  root: .landfall
+secrets:
+  provider: env
+landing:
+  format: arrow-ipc
+  compression: lz4
+planner:
+  targetPartitionBytes: 2147483648
+  minimumPartitionBytes: 134217728
+  desiredWaves: 3
+runtime:
+  type: local

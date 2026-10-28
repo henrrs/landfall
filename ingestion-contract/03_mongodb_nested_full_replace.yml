@@ -1,0 +1,43 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: customer
+  sourceSystem: crm_document
+  owner: customer-data
+  costAllocation: customer
+  tags:
+    criticality: medium
+
+source:
+  connector: mongodb
+  connectionRef: crm-document-prod
+  resource:
+    database: CRM
+    collection: customers
+
+fields:
+  - name: _id
+    type: string
+  - name: name
+    type: string
+  - name: phones
+    type: array<string>
+  - name: address
+    type: struct
+    fields:
+      - name: city
+        type: string
+      - name: state
+        type: string
+  - name: preferences
+    type: map<string,string>
+
+read:
+  mode: full
+
+target:
+  asset: customer
+  write:
+    mode: replace

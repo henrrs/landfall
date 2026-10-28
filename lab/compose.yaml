@@ -1,0 +1,45 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${LANDFALL_LAB_SQL_PASSWORD:-Landfall_Lab_2026!}"
+      MSSQL_PID: Developer
+    ports:
+      - "11433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+  floci-az:
+    image: floci/floci-az:latest
+    environment:
+      FLOCI_AZ_STORAGE_MODE: wal
+    ports:
+      - "4577:4577"
+    volumes:
+      - floci_data:/app/data
+  keyvault:
+    image: jamesgoulddev/azure-keyvault-emulator:latest
+    environment:
+      Persist: "true"
+    ports:
+      - "4997:4997"
+    volumes:
+      - ./certs:/certs
+  runner:
+    build:
+      context: ..
+      dockerfile: lab/runner/Dockerfile
+    depends_on:
+      - sqlserver
+      - floci-az
+      - keyvault
+    environment:
+      LANDFALL_LAB_SQL_PASSWORD: "${LANDFALL_LAB_SQL_PASSWORD:-Landfall_Lab_2026!}"
+      LANDFALL_ADLS_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${LANDFALL_LAB_STORAGE_KEY:?run make lab-env};BlobEndpoint=http://floci-az:4577/devstoreaccount1;DfsEndpoint=http://floci-az:4577/devstoreaccount1;"
+      REQUESTS_CA_BUNDLE: /app/lab/certs/emulator.crt
+    volumes:
+      - ./certs:/app/lab/certs:ro
+
+volumes:
+  sql_data:
+  floci_data:

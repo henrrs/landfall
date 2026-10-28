@@ -1,0 +1,44 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: customer
+  sourceSystem: legacy_crm
+  owner: customer-data
+  costAllocation: customer
+  tags:
+    criticality: medium
+
+source:
+  connector: ftp
+  connectionRef: legacy-ftp-prod
+  resource:
+    path: /exports/customer/
+    pattern: "CUSTOMER_*.csv"
+    format:
+      type: csv
+      header: true
+      delimiter: ";"
+      encoding: UTF-8
+
+fields:
+  - name: customer_id
+    type: int64
+  - name: name
+    type: string
+  - name: email
+    type: string
+  - name: updated_at
+    type: timestamp
+
+read:
+  mode: incremental
+  initialPosition: beginning
+  position:
+    strategy: source_native
+
+target:
+  asset: customer
+  write:
+    mode: append

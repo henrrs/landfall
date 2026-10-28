@@ -1,0 +1,15 @@
+.git/
+.venv*/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+build/
+src/
+tests/
+docs/
+ingestion-contract/
+lab/certs/
+lab/.env
+lab/output/
+**/__pycache__/
+**/*.pyc

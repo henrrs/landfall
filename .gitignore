@@ -1,0 +1,14 @@
+.venv/
+.venv-wheel/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+build/
+dist/
+*.egg-info/
+.landfall/
+lab/output/
+lab/certs/
+lab/.env

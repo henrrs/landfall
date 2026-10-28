@@ -1,0 +1,130 @@
+# Ingestion Contract — template genérico V1
+#
+# Este arquivo representa o envelope comum da linguagem. Campos dentro de
+# source.resource são definidos pelo ResourceSchema do connector escolhido.
+# Remova blocos opcionais que não se apliquem ao contrato concreto.
+
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.0.0
+  domain: <domain>
+  sourceSystem: <logical_source_system>
+  owner: <owner_team>
+
+  # Opcional: identificador corporativo para apropriação de custos.
+  costAllocation: <cost_allocation>
+
+  # Opcional: metadados organizacionais adicionais.
+  tags:
+    criticality: <low|medium|high>
+
+source:
+  # Classe do connector. Ex.: sqlserver, mongodb, kafka, object-storage,
+  # ftp, sftp, http-api, sharepoint.
+  connector: <connector>
+
+  # Referência lógica a uma conexão cadastrada. Nunca contém secrets.
+  connectionRef: <connection_ref>
+
+  # Connector-specific. O formato abaixo é apenas um placeholder.
+  # Exemplos:
+  # SQL:        {database: CRM, schema: dbo, table: Customer}
+  # MongoDB:    {database: CRM, collection: customers}
+  # Kafka:      {topic: customer-events}
+  # Storage:    {path: /customer/, pattern: "*.parquet"}
+  # HTTP API:   {method: GET, path: /customers, recordPath: data.items}
+  # SharePoint: {site: finance, list: Customers}
+  resource: {}
+
+# Allowlist explícita de atributos transportados.
+# Tipos canônicos escalares sugeridos:
+# boolean, int8, int16, int32, int64, float32, float64,
+# decimal(precision,scale), string, binary, date, timestamp
+# Tipos compostos: array<T>, map<K,V>, struct
+fields:
+  - name: <field_name>
+    type: string
+
+  # Exemplo de array:
+  # - name: phones
+  #   type: array<string>
+
+  # Exemplo de struct:
+  # - name: address
+  #   type: struct
+  #   fields:
+  #     - name: city
+  #       type: string
+  #     - name: state
+  #       type: string
+
+read:
+  # Valores V1:
+  # - full: relê o conjunto elegível e encerra.
+  # - incremental: avança até a fronteira da execução e encerra.
+  # - continuous: permanece acompanhando novos registros.
+  mode: incremental
+
+  # Obrigatório quando mode=incremental ou mode=continuous.
+  # Semântica da primeira ativação sem State: beginning | current
+  initialPosition: beginning
+
+  # Obrigatório quando mode=incremental ou mode=continuous.
+  position:
+    # Estratégias V1 conceituais:
+    # - ordered_fields: progresso representado por campos ordenáveis.
+    # - source_native: posição nativa da origem (offsets, cursor, token,
+    #   manifesto de arquivos etc.).
+    strategy: ordered_fields
+    fields:
+      - <ordered_field>
+      - <tie_breaker_field>
+
+    # Para source_native, normalmente remova "fields":
+    # strategy: source_native
+
+  # Opcional. A expressão é semântica; pushdown é capability/otimização.
+  filters:
+    and:
+      - field: <field_name>
+        operator: eq
+        value: <value>
+
+      - field: <field_name>
+        operator: in
+        values:
+          - <value_1>
+          - <value_2>
+
+# Operadores V1 de filtros:
+# eq, neq, gt, gte, lt, lte, in, not_in, is_null, is_not_null
+# Composição lógica: and, or
+
+target:
+  # Nome lógico do asset; o nome físico é derivado pela plataforma.
+  asset: <asset>
+
+  write:
+    # Valores V1: replace | append
+    # incremental + replace e continuous + replace são inválidos na V1.
+    mode: append
+
+    # Opcional; válido para append.
+    deduplication:
+      strategy: fingerprint
+
+      # Opcional. Por padrão todos os fields contratados participam.
+      excludeFields:
+        - <technical_field_to_exclude>
+
+# Opcional: objetivo operacional; não é tuning.
+# targetDuration aplica-se a full/incremental e deve ser omitido para continuous.
+serviceLevel:
+  targetDuration: PT30M
+
+# Opcional: limites externos que o Planner/Runtime não podem violar.
+execution:
+  constraints:
+    maxSourceConnections: 8

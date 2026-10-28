@@ -1,0 +1,68 @@
+apiVersion: ingestion.contract/v1alpha1
+kind: IngestionContract
+
+metadata:
+  version: 1.1.0
+  domain: customer
+  sourceSystem: crm
+  owner: customer-data
+  costAllocation: customer
+  tags:
+    criticality: high
+
+source:
+  connector: sqlserver
+  connectionRef: crm-prod
+  resource:
+    database: CRM
+    schema: dbo
+    table: TB_CLI_001
+
+fields:
+  - name: customer_id
+    type: int64
+  - name: name
+    type: string
+  - name: email
+    type: string
+  - name: status
+    type: string
+  - name: country
+    type: string
+  - name: updated_at
+    type: timestamp
+
+read:
+  mode: incremental
+  initialPosition: beginning
+  position:
+    strategy: ordered_fields
+    fields:
+      - updated_at
+      - customer_id
+  filters:
+    and:
+      - field: status
+        operator: eq
+        value: ACTIVE
+      - field: country
+        operator: in
+        values:
+          - BR
+          - AR
+
+target:
+  asset: customer
+  write:
+    mode: append
+    deduplication:
+      strategy: fingerprint
+      excludeFields:
+        - updated_at
+
+serviceLevel:
+  targetDuration: PT30M
+
+execution:
+  constraints:
+    maxSourceConnections: 8
