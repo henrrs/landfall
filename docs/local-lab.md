@@ -19,3 +19,5 @@ The `dbo.Shape` fixture adds negative and sparse IDs, decimal and temporal value
 `HotShape` verifies automatic hierarchical splitting of an indexed hot value. `WideShape` exercises MAX strings/binary, XML and rowversion with observed Arrow width; `UniqueNoPk` verifies ordered progress using a unique index without a primary key.
 
 `CompositeHot` verifies the numeric composite-key strategy against a reference SINGLE read, including a hot leading key and a secondary range.
+
+`make e2e-spark-single` adds a Spark `local[4]` driver. `make e2e-spark-multi` runs the same wheel on a Spark Standalone master and two workers; `make e2e-spark-all` compares both with Reference SINGLE and LocalRuntime. These scenarios use separate landing containers so prior run history cannot change planner boundaries between runtime comparisons. `LANDFALL_TEST_SCALE=tiny|ci|full` selects 10k, 20k, or 200k SQL fixture rows. See [Spark runtime](spark-runtime.md) for worker dependencies and evidence fields.

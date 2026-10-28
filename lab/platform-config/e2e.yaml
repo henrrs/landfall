@@ -23,8 +23,11 @@ landing:
   format: arrow-ipc
   compression: lz4
 planner:
-  targetPartitionBytes: 100
-  minimumPartitionBytes: 1
+  targetPartitionBytes: 131072
+  minimumPartitionBytes: 1024
+  skewQuantileThreshold: 1000000000
   desiredWaves: 2
+  safetyMaxConnections: 4
+  maxLogicalPartitions: 512
 runtime:
   type: local

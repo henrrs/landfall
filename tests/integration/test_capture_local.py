@@ -3,6 +3,7 @@ import json
 import pyarrow as pa
 import pytest
 
+from landfall.adapters.runtime import LocalRuntimeAdapter
 from landfall.adapters.storage import ConcurrentUpdate, LocalStorage
 from landfall.application.capture import CaptureEngine, DatasetBusy, DatasetLease
 from landfall.core.contract import IngestionContract, fingerprint
@@ -73,7 +74,8 @@ def contract(initial="beginning"):
 
 def _engine(tmp_path, source, initial="beginning"):
     return CaptureEngine(contract(initial), source, LocalStorage(str(tmp_path), "account", "landing"),
-                         RuntimeCapacity(2, 2, 1024**3), PlannerPolicy(minimum_partition_bytes=1,
+                         LocalRuntimeAdapter(RuntimeCapacity(2, 2, 1024**3)),
+                         PlannerPolicy(minimum_partition_bytes=1,
                          target_partition_bytes=100, desired_waves=2), compression="none")
 
 
@@ -124,7 +126,8 @@ def test_restart_after_manifest_reuses_run(tmp_path):
 
     source = FakeSource()
     storage = FailOnceState(str(tmp_path), "account", "landing")
-    engine = CaptureEngine(contract(), source, storage, RuntimeCapacity(2, 2, 1024**3),
+    engine = CaptureEngine(contract(), source, storage,
+                           LocalRuntimeAdapter(RuntimeCapacity(2, 2, 1024**3)),
                            PlannerPolicy(minimum_partition_bytes=1, target_partition_bytes=100,
                                          desired_waves=2), compression="none")
     with pytest.raises(OSError):
@@ -173,7 +176,8 @@ def test_orphan_recovery_streams_from_storage(tmp_path):
 
     source = FakeSource()
     storage = OrphanOnce(str(tmp_path), "account", "landing")
-    engine = CaptureEngine(contract(), source, storage, RuntimeCapacity(2, 2, 1024**3),
+    engine = CaptureEngine(contract(), source, storage,
+                           LocalRuntimeAdapter(RuntimeCapacity(2, 2, 1024**3)),
                            PlannerPolicy(minimum_partition_bytes=1, target_partition_bytes=100,
                                          desired_waves=2), compression="none")
     manifest = engine.run()
@@ -193,7 +197,8 @@ def test_manifest_failure_resumes_with_same_high(tmp_path):
 
     source = FakeSource()
     storage = FailManifestOnce(str(tmp_path), "account", "landing")
-    engine = CaptureEngine(contract(), source, storage, RuntimeCapacity(2, 2, 1024**3),
+    engine = CaptureEngine(contract(), source, storage,
+                           LocalRuntimeAdapter(RuntimeCapacity(2, 2, 1024**3)),
                            PlannerPolicy(minimum_partition_bytes=1, target_partition_bytes=100),
                            compression="none")
     with pytest.raises(OSError):
@@ -244,7 +249,7 @@ def test_compatible_physical_plan_boundaries_are_reused(tmp_path):
     assert "reused compatible physical boundaries" in reused.reasons
     assert reused.scope_fingerprint != first["scopeFingerprint"]
     different_capacity = CaptureEngine(engine.contract, engine.source, engine.storage,
-                                       RuntimeCapacity(1, 1, 1024**3), engine.policy,
+                                       LocalRuntimeAdapter(RuntimeCapacity(1, 1, 1024**3)), engine.policy,
                                        compression="none")
     assert "reused compatible physical boundaries" not in different_capacity.prepare()[2].reasons
 
@@ -264,7 +269,7 @@ def test_external_state_change_blocks_checkpoint_commit(tmp_path):
             yield from super().read(scope, partition, batch_size)
 
     engine = CaptureEngine(contract(), ConflictingSource(), storage,
-                           RuntimeCapacity(1, 1, 1024**3),
+                           LocalRuntimeAdapter(RuntimeCapacity(1, 1, 1024**3)),
                            PlannerPolicy(minimum_partition_bytes=1, target_partition_bytes=100),
                            compression="none")
     with pytest.raises(ConcurrentUpdate):

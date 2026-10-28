@@ -29,12 +29,83 @@ services:
     build:
       context: ..
       dockerfile: lab/runner/Dockerfile
+      args:
+        LANDFALL_UID: "${LANDFALL_CONTAINER_UID:-1000}"
+        LANDFALL_GID: "${LANDFALL_CONTAINER_GID:-1000}"
     depends_on:
       - sqlserver
       - floci-az
       - keyvault
+    user: "${LANDFALL_CONTAINER_UID:-1000}:${LANDFALL_CONTAINER_GID:-1000}"
     environment:
       LANDFALL_LAB_SQL_PASSWORD: "${LANDFALL_LAB_SQL_PASSWORD:-Landfall_Lab_2026!}"
+      LANDFALL_ADLS_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${LANDFALL_LAB_STORAGE_KEY:?run make lab-env};BlobEndpoint=http://floci-az:4577/devstoreaccount1;DfsEndpoint=http://floci-az:4577/devstoreaccount1;"
+      REQUESTS_CA_BUNDLE: /app/lab/certs/emulator.crt
+    volumes:
+      - ./certs:/app/lab/certs:ro
+      - ../build/test-runs:/app/artifacts/test-runs
+  spark-driver:
+    build:
+      context: ..
+      dockerfile: lab/spark/Dockerfile
+      args:
+        LANDFALL_UID: "${LANDFALL_CONTAINER_UID:-1000}"
+        LANDFALL_GID: "${LANDFALL_CONTAINER_GID:-1000}"
+    depends_on:
+      - sqlserver
+      - floci-az
+      - keyvault
+    user: "${LANDFALL_CONTAINER_UID:-1000}:${LANDFALL_CONTAINER_GID:-1000}"
+    entrypoint: ["python", "/app/lab/runner/e2e.py"]
+    command: ["e2e-spark-single"]
+    environment:
+      LANDFALL_LAB_SQL_PASSWORD: "${LANDFALL_LAB_SQL_PASSWORD:-Landfall_Lab_2026!}"
+      LANDFALL_ADLS_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${LANDFALL_LAB_STORAGE_KEY:?run make lab-env};BlobEndpoint=http://floci-az:4577/devstoreaccount1;DfsEndpoint=http://floci-az:4577/devstoreaccount1;"
+      REQUESTS_CA_BUNDLE: /app/lab/certs/emulator.crt
+      LANDFALL_TEST_SCALE: "${LANDFALL_TEST_SCALE:-ci}"
+    volumes:
+      - ./certs:/app/lab/certs:ro
+      - ../build/test-runs:/app/artifacts/test-runs
+  spark-master:
+    build:
+      context: ..
+      dockerfile: lab/spark/Dockerfile
+    hostname: spark-master
+    command:
+      - /bin/bash
+      - -lc
+      - "$$SPARK_HOME/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080"
+    ports:
+      - "17077:7077"
+      - "18080:8080"
+  spark-worker-1:
+    build:
+      context: ..
+      dockerfile: lab/spark/Dockerfile
+    hostname: spark-worker-1
+    depends_on:
+      - spark-master
+    command:
+      - /bin/bash
+      - -lc
+      - "$$SPARK_HOME/bin/spark-class org.apache.spark.deploy.worker.Worker --host spark-worker-1 --cores 2 --memory 2g spark://spark-master:7077"
+    environment:
+      LANDFALL_ADLS_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${LANDFALL_LAB_STORAGE_KEY:?run make lab-env};BlobEndpoint=http://floci-az:4577/devstoreaccount1;DfsEndpoint=http://floci-az:4577/devstoreaccount1;"
+      REQUESTS_CA_BUNDLE: /app/lab/certs/emulator.crt
+    volumes:
+      - ./certs:/app/lab/certs:ro
+  spark-worker-2:
+    build:
+      context: ..
+      dockerfile: lab/spark/Dockerfile
+    hostname: spark-worker-2
+    depends_on:
+      - spark-master
+    command:
+      - /bin/bash
+      - -lc
+      - "$$SPARK_HOME/bin/spark-class org.apache.spark.deploy.worker.Worker --host spark-worker-2 --cores 2 --memory 2g spark://spark-master:7077"
+    environment:
       LANDFALL_ADLS_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${LANDFALL_LAB_STORAGE_KEY:?run make lab-env};BlobEndpoint=http://floci-az:4577/devstoreaccount1;DfsEndpoint=http://floci-az:4577/devstoreaccount1;"
       REQUESTS_CA_BUNDLE: /app/lab/certs/emulator.crt
     volumes:

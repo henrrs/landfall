@@ -1,7 +1,12 @@
 PYTHON ?= python
 COMPOSE = docker compose --env-file lab/.env -f lab/compose.yaml
+export LANDFALL_ARTIFACT_ROOT := $(CURDIR)/build/test-runs
+export LANDFALL_CONTAINER_UID := $(shell id -u)
+export LANDFALL_CONTAINER_GID := $(shell id -g)
 
-.PHONY: setup lint test test-unit test-property test-contract test-planner build verify-wheel lab-env lab-cert lab-up lab-seed lab-run lab-test lab-reset lab-down e2e
+.PHONY: setup lint test test-unit test-property test-contract test-planner contract-lock build verify-wheel lab-env lab-cert lab-up lab-seed lab-run lab-test lab-reset lab-down e2e e2e-local e2e-local-scale e2e-spark-single e2e-spark-multi e2e-spark-all test-all-nospark test-all-spark test-all test-all-full benchmark benchmark-spark
+
+LANDFALL_TEST_SCALE ?= ci
 
 setup:
 	$(PYTHON) -m pip install -e '.[test,azure]'
@@ -24,6 +29,9 @@ test-contract:
 test-planner:
 	PYTHONPATH=src $(PYTHON) -m pytest -q tests/unit/test_planner.py tests/property/test_partition_coverage.py
 
+contract-lock:
+	PYTHONPATH=src $(PYTHON) -m pytest -q tests/conformance/test_contract_integrity.py
+
 build:
 	rm -f dist/landfall-*.whl
 	$(PYTHON) -m build --wheel
@@ -35,6 +43,7 @@ verify-wheel: build
 	env -u PYTHONPATH .venv-wheel/bin/landfall validate-contract --contract contracts/examples/customer.incremental.yaml
 
 lab-env:
+	mkdir -p "$(LANDFALL_ARTIFACT_ROOT)"
 	@if [ ! -f lab/.env ]; then openssl rand -base64 32 | awk '{print "LANDFALL_LAB_STORAGE_KEY=" $$0}' > lab/.env; fi
 
 lab-cert:
@@ -60,7 +69,49 @@ lab-reset: lab-env
 lab-down: lab-env
 	$(COMPOSE) down
 
-e2e: build lab-env lab-cert
+e2e: e2e-local
+
+e2e-local: build lab-env lab-cert
 	$(COMPOSE) down -v --remove-orphans
 	$(COMPOSE) up -d sqlserver floci-az keyvault
 	@trap '$(COMPOSE) down -v --remove-orphans' EXIT; $(COMPOSE) run --build --rm runner e2e
+
+e2e-local-scale: build lab-env lab-cert
+	$(COMPOSE) down -v --remove-orphans
+	$(COMPOSE) up -d sqlserver floci-az keyvault
+	@trap '$(COMPOSE) down -v --remove-orphans' EXIT; LANDFALL_TEST_SCALE=$(LANDFALL_TEST_SCALE) $(COMPOSE) run --build --rm runner e2e-local-scale
+
+e2e-spark-single: build lab-env lab-cert
+	$(COMPOSE) down -v --remove-orphans
+	$(COMPOSE) up -d sqlserver floci-az keyvault
+	@trap '$(COMPOSE) down -v --remove-orphans' EXIT; LANDFALL_TEST_SCALE=$(LANDFALL_TEST_SCALE) $(COMPOSE) run --build --rm spark-driver e2e-spark-single
+
+e2e-spark-multi: build lab-env lab-cert
+	$(COMPOSE) down -v --remove-orphans
+	$(COMPOSE) build spark-driver spark-master spark-worker-1 spark-worker-2
+	$(COMPOSE) up -d sqlserver floci-az keyvault spark-master spark-worker-1 spark-worker-2
+	@trap '$(COMPOSE) down -v --remove-orphans' EXIT; LANDFALL_TEST_SCALE=$(LANDFALL_TEST_SCALE) $(COMPOSE) run --rm spark-driver e2e-spark-multi
+
+e2e-spark-all: build lab-env lab-cert
+	$(COMPOSE) down -v --remove-orphans
+	$(COMPOSE) build spark-driver spark-master spark-worker-1 spark-worker-2
+	$(COMPOSE) up -d sqlserver floci-az keyvault spark-master spark-worker-1 spark-worker-2
+	@trap '$(COMPOSE) down -v --remove-orphans' EXIT; LANDFALL_TEST_SCALE=$(LANDFALL_TEST_SCALE) $(COMPOSE) run --rm spark-driver e2e-spark-all
+
+test-all-nospark:
+	$(PYTHON) scripts/test_all.py --runtime nospark --scale $(LANDFALL_TEST_SCALE)
+
+test-all-spark:
+	$(PYTHON) scripts/test_all.py --runtime spark --scale $(LANDFALL_TEST_SCALE)
+
+test-all:
+	$(PYTHON) scripts/test_all.py --runtime all --scale $(LANDFALL_TEST_SCALE)
+
+test-all-full:
+	$(MAKE) test-all LANDFALL_TEST_SCALE=full
+
+benchmark:
+	$(MAKE) e2e-local-scale LANDFALL_TEST_SCALE=full
+
+benchmark-spark:
+	$(MAKE) e2e-spark-all LANDFALL_TEST_SCALE=full

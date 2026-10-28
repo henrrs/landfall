@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import statistics
 import tempfile
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,7 +29,7 @@ from landfall.core.models import (
     semantic_scope,
 )
 from landfall.core.planner import plan, split_partition
-from landfall.ports import SourcePort, StoragePort, TelemetryPort
+from landfall.ports import ExecutionRuntimePort, SourcePort, StoragePort, TelemetryPort
 
 
 class DatasetBusy(RuntimeError):
@@ -145,12 +146,13 @@ class JsonTelemetry:
 
 class CaptureEngine:
     def __init__(self, contract: IngestionContract, source: SourcePort, storage: StoragePort,
-                 capacity, policy: PlannerPolicy, compression: str = "lz4",
+                 runtime: ExecutionRuntimePort, policy: PlannerPolicy, compression: str = "lz4",
                  telemetry: TelemetryPort | None = None):
         self.contract = contract
         self.source = source
         self.storage = storage
-        self.capacity = capacity
+        self.runtime = runtime
+        self.capacity = runtime.capacity
         self.policy = policy
         self.compression = compression.lower()
         self.telemetry = telemetry or JsonTelemetry()
@@ -294,6 +296,7 @@ class CaptureEngine:
                 with tempfile.TemporaryDirectory() as directory:
                     output = Path(directory) / "part.arrow"
                     rows = 0
+                    arrow_bytes = 0
                     options = pa.ipc.IpcWriteOptions(compression=None if self.compression == "none" else self.compression)
                     source_seconds = serialization_seconds = 0.0
                     query_latency = None
@@ -313,6 +316,7 @@ class CaptureEngine:
                                 source_seconds += elapsed
                                 if query_latency is None:
                                     query_latency = elapsed
+                                arrow_bytes += batch.nbytes
                                 tick = time.monotonic()
                                 table = pa.Table.from_batches([batch]).cast(self.schema, safe=True)
                                 for canonical in table.to_batches():
@@ -329,12 +333,15 @@ class CaptureEngine:
                         verified_rows = sum(reader.get_batch(i).num_rows for i in range(reader.num_record_batches))
                         if verified_rows != rows:
                             raise ValueError("Arrow IPC row count mismatch")
+                    with output.open("rb") as handle:
+                        checksum = hashlib.file_digest(handle, "sha256").hexdigest()
                     tick = time.monotonic()
                     byte_count = self.storage.publish_file(output, data_key)
                     storage_seconds = time.monotonic() - tick
                 duration = max(0.000001, time.monotonic() - started)
                 record = {"partition": partition.to_dict(), "file": data_key, "rows": rows,
-                          "bytes": byte_count, "status": "SUCCESS", "attempts": attempt,
+                          "bytes": byte_count, "ipcBytes": byte_count, "arrowBytes": arrow_bytes,
+                          "checksum": checksum, "status": "SUCCESS", "attempts": attempt,
                           "durationSeconds": duration,
                           "sourceReadSeconds": source_seconds,
                           "queryLatencySeconds": query_latency,
@@ -371,12 +378,19 @@ class CaptureEngine:
         with tempfile.TemporaryDirectory() as directory:
             local = Path(directory) / "orphan.arrow"
             byte_count = self.storage.download_to(data_key, local)
+            with local.open("rb") as handle:
+                checksum = hashlib.file_digest(handle, "sha256").hexdigest()
             with pa.ipc.open_file(str(local)) as reader:
-                rows = sum(reader.get_batch(i).num_rows for i in range(reader.num_record_batches))
+                rows = arrow_bytes = 0
+                for index in range(reader.num_record_batches):
+                    batch = reader.get_batch(index)
+                    rows += batch.num_rows
+                    arrow_bytes += batch.nbytes
                 if not reader.schema.equals(self.schema, check_metadata=False):
                     raise ValueError("published Arrow file has incompatible schema")
         cached = {"partition": partition.to_dict(), "file": data_key, "rows": rows,
-                  "bytes": byte_count, "status": "SUCCESS", "recovered": True}
+                  "bytes": byte_count, "ipcBytes": byte_count, "arrowBytes": arrow_bytes,
+                  "checksum": checksum, "status": "SUCCESS", "recovered": True}
         self.storage.write(manifest_key, _json(cached))
         return [cached]
 
@@ -396,6 +410,10 @@ class CaptureEngine:
         pending = self._resume(previous, state.get("lastCommittedRun"))
         resumed = pending is not None
         if pending:
+            expected_runtime = {"type": self.runtime.runtime_type, "mode": self.runtime.mode}
+            recorded_runtime = pending.get("runtimeIdentity", {"type": "local", "mode": "thread-pool"})
+            if recorded_runtime != expected_runtime:
+                raise ContractError("pending run requires a compatible execution runtime")
             run_id = pending["runId"]
             scope_dict = pending["scope"]
             scope = SemanticReadScope(scope_dict["identity"], scope_dict["mode"],
@@ -428,15 +446,33 @@ class CaptureEngine:
                        "targetWrite": self.contract.document["target"]["write"],
                        "previousPosition": previous.to_dict() if previous else None,
                        "scope": scope.to_dict(), "scopeFingerprint": scope.hash,
-                       "profileId": profile_id, "planId": physical.plan_id, "startedAt": _now()}
+                       "profileId": profile_id, "planId": physical.plan_id,
+                       "runtimeIdentity": {"type": self.runtime.runtime_type,
+                                           "mode": self.runtime.mode},
+                       "startedAt": _now()}
             self.storage.write(f"{self.meta}/runs/{run_id}/run.json", _json(pending))
         self.telemetry.event("run_started", run=run_id, resumed=resumed)
-        partition_records = []
-        with ThreadPoolExecutor(max_workers=physical.max_in_flight) as executor:
-            futures = [executor.submit(self._partition, run_id, scope, part) for part in physical.partitions]
-            for future in as_completed(futures):
-                partition_records.extend(future.result())
+        runtime_result = self.runtime.execute(
+            physical,
+            lambda part: self._partition(run_id, scope, part),
+            {
+                "contract": self.contract.document,
+                "scope": scope.to_dict(),
+                "runId": run_id,
+                "sourceConnectionRef": self.contract.document["source"]["connectionRef"],
+                "base": self.base,
+                "meta": self.meta,
+                "schemaIpcBase64": base64.b64encode(self.schema.serialize().to_pybytes()).decode("ascii"),
+                "compression": self.compression,
+                "batchTargetBytes": self.policy.batch_target_bytes,
+            },
+        )
+        partition_records = runtime_result["partitions"]
         partition_records.sort(key=lambda record: record["partition"]["id"])
+        for record in partition_records:
+            evidence_key = (f"{self.meta}/runs/{run_id}/partitions/"
+                            f"{record['partition']['id']}.json")
+            self.storage.write(evidence_key, _json(record))
         if not partition_records or any(r["status"] != "SUCCESS" or not self.storage.exists(r["file"]) for r in partition_records):
             raise RuntimeError("capture validation failed")
         lease.check()
@@ -460,7 +496,10 @@ class CaptureEngine:
                     "files": [r["file"] for r in partition_records],
                     "rows": sum(r["rows"] for r in partition_records),
                     "bytes": sum(r["bytes"] for r in partition_records),
+                    "arrowBytes": sum(r.get("arrowBytes", 0) for r in partition_records),
+                    "ipcBytes": sum(r.get("ipcBytes", r["bytes"]) for r in partition_records),
                     "compression": self.compression, "partitions": partition_records}
+        manifest["runtime"] = runtime_result["evidence"]
         manifest["consistencyLevel"] = physical.consistency_level
         manifest_key = f"{self.meta}/runs/{run_id}/manifest.json"
         if not self.storage.exists(manifest_key):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -11,6 +11,8 @@ import pyarrow as pa
 from landfall.core.contract import IngestionContract
 from landfall.core.models import (
     Partition,
+    PhysicalReadPlan,
+    RuntimeCapacity,
     SemanticReadScope,
     SourceCapabilities,
     SourcePosition,
@@ -44,3 +46,17 @@ class StoragePort(Protocol):
 
 class TelemetryPort(Protocol):
     def event(self, name: str, **fields: Any) -> None: ...
+
+
+class ExecutionRuntimePort(Protocol):
+    """Executes logical partitions while leaving run state with the application."""
+
+    runtime_type: str
+    mode: str
+    capacity: RuntimeCapacity
+
+    def execute(self, plan: PhysicalReadPlan,
+                partition_handler: Callable[[Partition], list[dict[str, Any]]],
+                context: dict[str, Any]) -> dict[str, Any]: ...
+
+    def close(self) -> None: ...

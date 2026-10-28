@@ -27,11 +27,12 @@ SQL Server to immutable Arrow IPC Landing, using the independent Ingestion Contr
 | Resume and streaming orphan recovery | DONE | Local failure injection and E2E, `docs/failure-recovery.md` |
 | Broad SQL/contract conformance matrix | PARTIAL | Normative matrix, SQL reference reader fixture and local tests cover representative cases; full matrix remains |
 | Wheel-only lab E2E | DONE | `make e2e`, `lab/runner/e2e.py`, `docs/local-lab.md` |
-| Distributed Spark runtime / UC resolver | DEFERRED | Explicit non-goal of this phase; `docs/databricks-external-location.md` |
+| Spark local and Standalone runtimes | DONE | `SparkRuntimeAdapter`, worker wheel image, `make test-all-spark`, `docs/spark-runtime.md` |
+| Databricks / Unity Catalog executor access | DEFERRED | Requires a separate workspace certification under the configured External Location; `docs/databricks-external-location.md` |
 
 ## Completed
 
-The normative contract remains the source of truth. SQL profiling now collects key/index metadata, existing histogram and freshness signals, and bounded Arrow calibration. Physical plans use observed width, resource caps and recent execution metrics. A renewable storage lease serializes writers. Published orphan files are recovered through chunked download and Arrow file validation. A wheel-only lab verifies SQL metadata and compares reference SINGLE with partitioned SQL readers.
+The normative contract remains the source of truth. SQL profiling now collects key/index metadata, existing histogram and freshness signals, and bounded Arrow calibration. Physical plans use observed width, resource caps and recent execution metrics. A renewable storage lease serializes writers. Published orphan files are recovered through chunked download and Arrow file validation. The LocalRuntime and Spark adapter share `ExecutionRuntimePort`; Spark uses `mapInArrow`, runs the same `SqlServerConnector` on workers, writes Arrow IPC there, and returns only partition evidence. The wheel-only lab compares Reference SINGLE, LocalRuntime, Spark `local[4]`, and Spark Standalone workers against the same contract, profile, and physical boundaries.
 
 ## Partially completed
 
@@ -48,11 +49,11 @@ The normative contract remains the source of truth. SQL profiling now collects k
 
 ## Explicitly deferred
 
-SQL hash predicates until an indexed, efficient source mechanism is demonstrated; real Azure compatibility without credentials in this environment; distributed Spark execution and automatic Unity Catalog External Location resolution; new source connectors and downstream Bronze/Silver/Gold.
+SQL hash predicates until an indexed, efficient source mechanism is demonstrated; real Azure compatibility without credentials in this environment; Databricks/Unity Catalog executor access certification and automatic External Location resolution; new source connectors and downstream Bronze/Silver/Gold.
 
 ## Tests / evidence
 
-Local validation on 2026-10-28: `make lint` passed; `make test` passed 122 tests with 0 failures and 0 skips; `make verify-wheel` installed and ran wheel 1.0.0; `make e2e` passed using the installed wheel and emulators; `git diff --check` passed. The separate CI E2E job runs on `main` pushes or manual dispatch. CI status belongs in the final completion report after publication.
+On 2026-10-28, `make test-all LANDFALL_TEST_SCALE=ci` passed: 171 tests, 0 failures, 0 skips; wheel verification; LocalRuntime SQL Server/Key Vault/Floci E2E; and Reference/Local/Spark single-node/Spark multi-worker matrix. Each runtime captured 18,000 eligible rows in 19 partitions with matching schema and canonical multiset, 0 lost rows, and 0 duplicates. The Spark single-node scenario observed 3 concurrent tasks on 1 host; multi-worker observed 3 concurrent tasks across 2 executor identities and 2 hosts. Gate artifacts are in `build/test-runs/gate-all-20261028T114003Z-2fe0c578/`. Databricks and real Azure tests remain outside this environment because there is no workspace or Azure credential configured.
 
 ## Known risks
 

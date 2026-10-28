@@ -4,7 +4,7 @@ Landfall is a source-to-landing capture engine. It reads an independent **Ingest
 
 ```text
 Ingestion Contract + State → SemanticReadScope → SourceProfile + History
-        → PhysicalReadPlan → Local runtime → Arrow IPC → Landing → Manifest → State
+        → PhysicalReadPlan → Local or Spark runtime → Arrow IPC → Landing → Manifest → State
 ```
 
 The [normative Ingestion Contract V1](ingestion-contract/contrato_ingestao_v1.md) defines source selection, authorized fields, filters, read semantics and target intent. Platform Config resolves secrets, storage, compression and planner tuning. `target.write` is validated and recorded; it never deletes or deduplicates Landing captures.
@@ -24,13 +24,11 @@ landfall run --contract contracts/examples/customer.incremental.yaml --platform 
 ## Build and test
 
 ```bash
-make lint
-make test
-make build
-make verify-wheel
-make e2e
+make test-all-nospark
+make test-all-spark
+make test-all
 ```
 
-`make e2e` needs Docker and Docker Compose. It builds the wheel, installs it in a runner image, seeds SQL Server and Key Vault emulator, writes to Floci ADLS Gen2, and checks two incremental runs. See [local lab](docs/local-lab.md). Production guarantees and remaining work are tracked in [V1 completion](docs/v1-completion.md).
+Certification commands require Docker and Docker Compose. Spark certification uses `mapInArrow` with a single-node Spark session and a two-worker Standalone cluster. See [Spark runtime](docs/spark-runtime.md), [testing strategy](docs/testing-strategy.md), and [local lab](docs/local-lab.md). Runtime boundaries and limitations are tracked in [V1 completion](docs/v1-completion.md).
 
 Detailed design and boundaries: [architecture](docs/architecture.md), [contract integration](docs/ingestion-contract-integration.md), [source position](docs/source-position.md), [planner](docs/adaptive-planner.md), [storage](docs/storage-layout.md), [tests](docs/testing-strategy.md).

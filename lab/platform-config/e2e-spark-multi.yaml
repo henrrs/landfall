@@ -1,0 +1,39 @@
+storageTopology:
+  domains:
+    customer:
+      storageAccount: devstoreaccount1
+      containers:
+        landing: landing-zone-spark-multi
+        bronze: bronze
+        silver: silver
+        gold: gold
+registries:
+  sourceSystems: [crm]
+storage:
+  type: adls
+  connectionStringEnv: LANDFALL_ADLS_CONNECTION_STRING
+  dfsHostHeader: devstoreaccount1.dfs.core.windows.net
+secrets:
+  provider: keyvault
+  emulator: true
+  vaultUrl: https://keyvault:4997
+  references:
+    crm-local: crm-local
+landing:
+  format: arrow-ipc
+  compression: lz4
+planner:
+  targetPartitionBytes: 131072
+  minimumPartitionBytes: 1024
+  skewQuantileThreshold: 1000000000
+  desiredWaves: 2
+  safetyMaxConnections: 4
+  maxLogicalPartitions: 512
+runtime:
+  type: spark
+  spark:
+    mode: cluster
+    master: spark://spark-master:7077
+    cores: 4
+    executors: 2
+    appName: landfall-certification-multi

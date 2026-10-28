@@ -49,9 +49,9 @@ Uma ingestão não deve ser definida pela tecnologia usada para executá-la. Ela
 
 A arquitetura distingue quatro responsabilidades centrais:
 
-> **Contrato = intenção e invariantes.**<br>
-> **Planner = decisão adaptativa em runtime.**<br>
-> **Runtime = execução.**<br>
+> **Contrato = intenção e invariantes.**  
+> **Planner = decisão adaptativa em runtime.**  
+> **Runtime = execução.**  
 > **State = progresso e evidências operacionais.**
 
 ```mermaid
@@ -210,7 +210,7 @@ Transferência de objetos binários sem interpretação como registros permanece
 
 O Contrato de Ingestão e um Data Contract resolvem problemas diferentes.
 
-> **Data Contract:** o que este dado significa?<br>
+> **Data Contract:** o que este dado significa?  
 > **Ingestion Contract:** sob quais condições este dado entra na plataforma?
 
 Um Data Contract pode conter:
@@ -2351,9 +2351,9 @@ State
 
 A essência arquitetural permanece:
 
-> **Contrato = intenção e invariantes.**<br>
-> **Planner = decisão adaptativa em runtime.**<br>
-> **Runtime = execução.**<br>
+> **Contrato = intenção e invariantes.**  
+> **Planner = decisão adaptativa em runtime.**  
+> **Runtime = execução.**  
 > **State = progresso e evidências operacionais.**
 
 E a regra de extensibilidade é:

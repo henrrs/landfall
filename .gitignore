@@ -12,3 +12,4 @@ dist/
 lab/output/
 lab/certs/
 lab/.env
+artifacts/

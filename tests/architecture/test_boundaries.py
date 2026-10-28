@@ -38,3 +38,25 @@ def test_sqlserver_adapter_satisfies_source_port_surface():
 
     assert all(callable(getattr(SqlServerConnector, method, None)) for method in
                ("validate", "profile", "high_position", "read"))
+
+
+def test_production_source_has_no_jdbc_path():
+    source_root = Path(__file__).parents[2] / "src" / "landfall"
+    forbidden = (
+        "spark.read.jdbc(", "dataframereader.jdbc(", 'format("jdbc")',
+        "jdbc:sqlserver://", "com.microsoft.sqlserver.jdbc.", "java.sql.",
+    )
+    for file in source_root.rglob("*.py"):
+        source = file.read_text().lower()
+        assert not [entry for entry in forbidden if entry in source], file
+
+
+def test_pyspark_imports_are_confined_to_runtime_adapters():
+    source_root = Path(__file__).parents[2] / "src" / "landfall"
+    for file in source_root.rglob("*.py"):
+        tree = ast.parse(file.read_text())
+        imports = [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+        imports += [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+                    for alias in node.names]
+        if any(name.startswith(("pyspark", "py4j")) for name in imports):
+            assert file.parts[-2] == "adapters", file

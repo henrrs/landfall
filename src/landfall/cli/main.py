@@ -9,7 +9,7 @@ import sys
 
 from landfall import __version__
 from landfall.adapters.loaders import load_contract, load_platform, resolve_platform
-from landfall.adapters.runtime import local_capacity
+from landfall.adapters.runtime import make_runtime
 from landfall.adapters.secrets import make_secret_provider
 from landfall.adapters.sqlserver import SqlServerConnector
 from landfall.adapters.storage import make_storage
@@ -19,16 +19,21 @@ from landfall.application.capture import CaptureEngine
 def _engine(args) -> CaptureEngine:
     contract = load_contract(args.contract)
     platform = load_platform(args.platform)
-    account, container, policy = resolve_platform(
-        platform, contract.document["metadata"]["domain"],
-        contract.document["metadata"]["sourceSystem"])
-    if contract.document["source"]["connector"] != "sqlserver":
-        raise ValueError(f"no connector for {contract.document['source']['connector']}")
-    secret = make_secret_provider(platform).resolve(contract.document["source"]["connectionRef"])
-    source = SqlServerConnector(secret, platform.get("sqlserver", {})).bind(contract)
-    storage = make_storage(platform, account, container)
-    return CaptureEngine(contract, source, storage, local_capacity(), policy,
-                         platform.get("landing", {}).get("compression", "lz4"))
+    runtime = make_runtime(platform, contract.document["metadata"]["domain"])
+    try:
+        account, container, policy = resolve_platform(
+            platform, contract.document["metadata"]["domain"],
+            contract.document["metadata"]["sourceSystem"])
+        if contract.document["source"]["connector"] != "sqlserver":
+            raise ValueError(f"no connector for {contract.document['source']['connector']}")
+        secret = make_secret_provider(platform).resolve(contract.document["source"]["connectionRef"])
+        source = SqlServerConnector(secret, platform.get("sqlserver", {})).bind(contract)
+        storage = make_storage(platform, account, container)
+        return CaptureEngine(contract, source, storage, runtime, policy,
+                             platform.get("landing", {}).get("compression", "lz4"))
+    except Exception:
+        runtime.close()
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
     logging.getLogger("azure").setLevel(logging.WARNING)
+    engine = None
     try:
         if args.command == "version":
             print(__version__)
@@ -65,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - CLI returns a concise error for adapter failures
         print(f"landfall: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if engine is not None:
+            engine.runtime.close()
     return 0
 
 
