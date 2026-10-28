@@ -4,4 +4,4 @@
 
 Run order is: publish all partition files, validate partition records, write manifest, mark run committed, then compare-and-swap state. A crash before state advancement leaves the previous checkpoint; restart finds a pending run with the same contract and previous position and reuses its saved scope and plan. Already successful partitions are reused.
 
-Concurrent writers cannot silently overwrite state, but the current implementation has no dataset-wide lease. Two simultaneous runs may publish distinct captures before one loses the state compare-and-swap; only the winner advances the checkpoint. Schedule one writer per dataset until leases are implemented.
+A renewable dataset lease lives at `_ingestion/state/writer-lease.json`. Conditional storage writes acquire it before state inspection, renew it during the run, and check it before manifest/state commit. Local and ADLS adapters use the same CAS protocol. An abandoned lease expires after 90 seconds; another writer can then resume. State CAS remains the final guard. Plan files now carry `version: 2`; old files without it load as version 1, and existing state files remain readable.

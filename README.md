@@ -1,9 +1,9 @@
 # Landfall
 
-Landfall is a source-to-landing capture engine. It reads an independent **Ingestion Contract V1** plus a separate **Platform Config**, and produces immutable Arrow IPC files, a committed run manifest, and a durable capture checkpoint. V1 supports SQL Server with `mssql-python`.
+Landfall is a source-to-landing capture engine. It reads an independent **Ingestion Contract V1** plus a separate **Platform Config**, and produces immutable Arrow IPC files, a committed run manifest, and a durable capture checkpoint. SQL Server is the supported source, using `mssql-python`.
 
 ```text
-Ingestion Contract → SemanticReadScope → SourceProfile → Adaptive Planner
+Ingestion Contract + State → SemanticReadScope → SourceProfile + History
         → PhysicalReadPlan → Local runtime → Arrow IPC → Landing → Manifest → State
 ```
 
@@ -31,6 +31,6 @@ make verify-wheel
 make e2e
 ```
 
-`make e2e` needs Docker and Docker Compose. It builds the wheel, installs it in a runner image, seeds SQL Server and Key Vault emulator, writes to Floci ADLS Gen2, and checks two incremental runs. See [local lab](docs/local-lab.md).
+`make e2e` needs Docker and Docker Compose. It builds the wheel, installs it in a runner image, seeds SQL Server and Key Vault emulator, writes to Floci ADLS Gen2, and checks two incremental runs. See [local lab](docs/local-lab.md). Production guarantees and remaining work are tracked in [V1 completion](docs/v1-completion.md).
 
 Detailed design and boundaries: [architecture](docs/architecture.md), [contract integration](docs/ingestion-contract-integration.md), [source position](docs/source-position.md), [planner](docs/adaptive-planner.md), [storage](docs/storage-layout.md), [tests](docs/testing-strategy.md).

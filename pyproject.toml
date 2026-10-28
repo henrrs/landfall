@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "landfall"
-version = "0.1.0"
+version = "1.0.0"
 description = "Contract driven source to landing capture engine"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6,<7", "pyarrow>=17,<26", "mssql-python>=1.0"]

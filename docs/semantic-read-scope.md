@@ -4,4 +4,4 @@ The application combines the validated contract and committed state to create a 
 
 The scope fingerprint is recorded in the physical plan and manifest. The planner can change the traversal column, boundaries and concurrency without changing eligibility. A `customer_id` range can split a scope whose checkpoint is `(updated_at, customer_id)`.
 
-For full reads, the current implementation records a run start time but does not hold a database snapshot across independent connections. See [failure and consistency limits](failure-recovery.md).
+For full reads, the current implementation records a run start time but does not hold a database snapshot across independent connections. Incremental runs freeze HIGH before any partition query; each query uses the same `(LOW, HIGH]` window. The manifest records `BEST_EFFORT` for full and `BOUNDED_POSITION` for incremental, never `SNAPSHOT`. See [failure and consistency limits](failure-recovery.md).

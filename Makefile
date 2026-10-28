@@ -25,6 +25,7 @@ test-planner:
 	PYTHONPATH=src $(PYTHON) -m pytest -q tests/unit/test_planner.py tests/property/test_partition_coverage.py
 
 build:
+	rm -f dist/landfall-*.whl
 	$(PYTHON) -m build --wheel
 
 verify-wheel: build

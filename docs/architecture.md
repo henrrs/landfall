@@ -6,6 +6,7 @@ flowchart LR
   State --> Scope
   Scope --> Planner
   Profile --> Planner
+  History --> Planner
   Capacity --> Planner
   Planner --> Plan[PhysicalReadPlan]
   Plan --> Runtime
@@ -19,4 +20,4 @@ flowchart LR
 
 The wheel contains all core and adapter code. Azure SDK imports occur only when Azure adapters are selected. Local tests can import the core without a SQL connection or cloud credentials. A future source implements `SourcePort` and is registered at the CLI composition boundary; the core need not change.
 
-Current local runtime uses a bounded thread pool. Spark and Databricks can supply another execution adapter using the same plan and wheel. They are not implemented in V1.
+Current local runtime uses a bounded thread pool. A storage CAS lease limits each dataset to one active writer, and committed partition metrics feed the next plan. Spark and Databricks can supply another execution adapter using the same plan and wheel. They are outside this SQL Server completion phase.

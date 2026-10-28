@@ -68,6 +68,11 @@ class LocalStorage:
         os.replace(partial, path)
         return path.stat().st_size
 
+    def download_to(self, key: str, file: Path) -> int:
+        with self._path(key).open("rb") as source, file.open("wb") as target:
+            shutil.copyfileobj(source, target, 1024 * 1024)
+        return file.stat().st_size
+
     def list(self, prefix: str) -> list[str]:
         path = self._path(prefix)
         if not path.exists():
@@ -190,6 +195,12 @@ class AdlsStorage:
         with file.open("rb") as source:
             self._file(temporary).upload_data(source, overwrite=True, max_concurrency=1)
         self._file(temporary).rename_file(f"{self.container}/{key}")
+        return file.stat().st_size
+
+    def download_to(self, key: str, file: Path) -> int:
+        with file.open("wb") as target:
+            for chunk in self._file(key).download_file().chunks():
+                target.write(chunk)
         return file.stat().st_size
 
     def list(self, prefix: str) -> list[str]:

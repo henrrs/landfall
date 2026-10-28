@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from landfall.core.contract import IngestionContract, fingerprint
@@ -51,6 +53,28 @@ def semantic_scope(contract: IngestionContract, low: SourcePosition | None,
                              read.get("filters"), position_fields, low, high, horizon)
 
 
+def ordered_position_key(contract: IngestionContract, position: SourcePosition) -> tuple[Any, ...]:
+    """Compare durable JSON position values by contracted type, not string spelling."""
+    types = dict(contract.fields)
+    fields = contract.document["read"]["position"]["fields"]
+    converted = []
+    for field_name, value in zip(fields, position.values, strict=True):
+        typ = types[field_name]
+        if typ.startswith("decimal("):
+            converted.append(Decimal(str(value)))
+        elif typ.startswith("int"):
+            converted.append(int(value))
+        elif typ in {"float32", "float64"}:
+            converted.append(float(value))
+        elif typ == "timestamp":
+            converted.append(datetime.fromisoformat(str(value)))
+        elif typ == "date":
+            converted.append(date.fromisoformat(str(value)))
+        else:
+            converted.append(value)
+    return tuple(converted)
+
+
 @dataclass(frozen=True)
 class ColumnProfile:
     name: str
@@ -64,6 +88,12 @@ class ColumnProfile:
     unique: bool = False
     null_fraction: float = 0.0
     skew: float = 1.0
+    histogram: tuple[tuple[Any, int], ...] = ()
+    hot_values: tuple[tuple[Any, int], ...] = ()
+    statistics_confidence: float = 0.0
+    statistics_updated_at: str | None = None
+    key_position: int | None = None
+    index_quality: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -76,14 +106,50 @@ class SourceProfile:
     keys: tuple[tuple[str, ...], ...] = ()
     confidence: float = 0.5
     observed_fields: tuple[str, ...] = ()
+    observed_arrow_row_bytes: float | None = None
+    probe_rows: int = 0
+    probe_seconds: float | None = None
+    probe_bytes_per_second: float | None = None
+    indexes: tuple[tuple[str, ...], ...] = ()
+    index_included_columns: tuple[tuple[str, ...], ...] = ()
+    consistency_capabilities: tuple[str, ...] = ()
 
     @property
     def estimated_bytes(self) -> int:
-        return self.estimated_rows * self.arrow_row_bytes
+        return int(self.estimated_rows * (self.observed_arrow_row_bytes or self.arrow_row_bytes))
 
     @property
     def hash(self) -> str:
-        return fingerprint(asdict(self))
+        value = asdict(self)
+        value.pop("profile_id")
+        return fingerprint(value)
+
+    @property
+    def reuse_signature(self) -> str:
+        value = asdict(self)
+        for key in ("profile_id", "probe_seconds", "probe_bytes_per_second"):
+            value.pop(key)
+        return fingerprint(value)
+
+
+@dataclass(frozen=True)
+class ExecutionHistory:
+    runs: int = 0
+    last_strategy: str | None = None
+    last_candidate: str | None = None
+    last_partitions: int = 0
+    average_partition_seconds: float | None = None
+    p95_partition_seconds: float | None = None
+    bytes_per_second_per_reader: float | None = None
+    retries: int = 0
+    splits: int = 0
+    failures: int = 0
+    timeouts: int = 0
+    average_query_latency_seconds: float | None = None
+    average_serialization_seconds: float | None = None
+    average_storage_seconds: float | None = None
+    schema_fingerprint: str | None = None
+    observed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +179,15 @@ class PlannerPolicy:
     batch_target_bytes: int = 16 * 1024**2
     skew_quantile_threshold: float = 2.0
     max_split_depth: int = 2
+    maximum_partition_bytes: int = 8 * 1024**3
+    target_partition_seconds: float = 300.0
+    skew_moderate_threshold: float = 1.5
+    skew_high_threshold: float = 3.0
+    skew_extreme_threshold: float = 8.0
+    max_logical_partitions: int = 4096
+    history_ttl_seconds: int = 7 * 86400
+    hot_value_fraction_threshold: float = 0.5
+    minimum_hot_value_rows: int = 64
 
 
 @dataclass(frozen=True)
@@ -125,6 +200,10 @@ class Partition:
     include_null: bool = False
     parent: str | None = None
     depth: int = 0
+    value: Any = None
+    secondary_field: str | None = None
+    secondary_lower: Any = None
+    secondary_upper: Any = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -143,6 +222,8 @@ class PhysicalReadPlan:
     target_partition_bytes: int
     batch_target_bytes: int
     reasons: tuple[str, ...] = field(default_factory=tuple)
+    version: int = 2
+    consistency_level: str = "BEST_EFFORT"
 
     @property
     def logical_partitions(self) -> int:
@@ -159,4 +240,5 @@ class PhysicalReadPlan:
                    value["profile_fingerprint"], value["strategy"], value["candidate"],
                    tuple(Partition(**p) for p in value["partitions"]), value["max_in_flight"],
                    value["target_partition_bytes"], value["batch_target_bytes"],
-                   tuple(value["reasons"]))
+                   tuple(value["reasons"]), value.get("version", 1),
+                   value.get("consistency_level", "BEST_EFFORT"))

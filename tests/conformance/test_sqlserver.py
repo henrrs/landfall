@@ -3,6 +3,7 @@ import pytest
 from landfall.adapters.sqlserver import (
     _lexicographic,
     compile_filter,
+    distribution_skew,
     quoted,
     sql_type_to_canonical,
 )
@@ -52,3 +53,11 @@ def test_lexicographic_window():
 def test_identifier_injection_rejected():
     with pytest.raises(ContractError):
         quoted("x]; DROP TABLE T")
+
+
+def test_histogram_detects_sparse_numeric_and_temporal_distribution():
+    numeric = tuple((i, 1) for i in range(1, 200)) + ((1_000_000_000, 1),)
+    temporal = tuple((f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}", 1)
+                     for i in range(199)) + (("2027-01-01T00:00:00", 1),)
+    assert distribution_skew(numeric, "int64") > 8
+    assert distribution_skew(temporal, "timestamp") > 8

@@ -25,7 +25,7 @@ def _engine(args) -> CaptureEngine:
     if contract.document["source"]["connector"] != "sqlserver":
         raise ValueError(f"no connector for {contract.document['source']['connector']}")
     secret = make_secret_provider(platform).resolve(contract.document["source"]["connectionRef"])
-    source = SqlServerConnector(secret).bind(contract)
+    source = SqlServerConnector(secret, platform.get("sqlserver", {})).bind(contract)
     storage = make_storage(platform, account, container)
     return CaptureEngine(contract, source, storage, local_capacity(), policy,
                          platform.get("landing", {}).get("compression", "lz4"))

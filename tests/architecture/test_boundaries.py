@@ -15,3 +15,26 @@ def test_core_import_boundary():
 def test_contract_has_no_platform_config_reference():
     contract = Path(__file__).parents[2] / "src" / "landfall" / "core" / "contract.py"
     assert "PlatformConfig" not in contract.read_text()
+
+
+def test_planner_contains_no_sql_compiler_or_source_adapter_import():
+    planner = Path(__file__).parents[2] / "src" / "landfall" / "core" / "planner.py"
+    tree = ast.parse(planner.read_text())
+    imports = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    assert all("sqlserver" not in name and "adapters" not in name for name in imports)
+    assert "SELECT " not in planner.read_text()
+
+
+def test_application_depends_on_ports_not_concrete_adapters():
+    application = Path(__file__).parents[2] / "src" / "landfall" / "application"
+    for file in application.rglob("*.py"):
+        tree = ast.parse(file.read_text())
+        imports = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+        assert all(not name.startswith("landfall.adapters") for name in imports), file
+
+
+def test_sqlserver_adapter_satisfies_source_port_surface():
+    from landfall.adapters.sqlserver import SqlServerConnector
+
+    assert all(callable(getattr(SqlServerConnector, method, None)) for method in
+               ("validate", "profile", "high_position", "read"))
